@@ -1,17 +1,15 @@
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  * @polyfill
  * @flow
  * @format
  */
 
-'use strict';
+"use strict";
 
 /* eslint-disable no-bitwise */
 
@@ -22,14 +20,16 @@ type Exports = any;
 type FactoryFn = (
   global: Object,
   require: RequireFn,
-  moduleObject: {exports: {}},
+  moduleObject: { exports: {} },
   exports: {},
-  dependencyMap: ?DependencyMap,
+  dependencyMap: ?DependencyMap
 ) => void;
-type HotModuleReloadingAcceptFn = Function;
+type HotModuleReloadingCallback = () => void;
 type HotModuleReloadingData = {|
-  acceptCallback: ?HotModuleReloadingAcceptFn,
-  accept: (callback: HotModuleReloadingAcceptFn) => void,
+  acceptCallback: ?HotModuleReloadingCallback,
+  accept: (callback: HotModuleReloadingCallback) => void,
+  disposeCallback: ?HotModuleReloadingCallback,
+  dispose: (callback: HotModuleReloadingCallback) => void,
 |};
 type Module = {
   exports: Exports,
@@ -46,7 +46,8 @@ type ModuleDefinition = {|
   isInitialized: boolean,
   verboseName?: string,
 |};
-type ModuleMap = {[key: ModuleID]: ModuleDefinition, __proto__: null};
+type ModuleMap = { [key: ModuleID]: ModuleDefinition, __proto__: null };
+type PatchedModules = { [ModuleID]: boolean };
 type RequireFn = (id: ModuleID | VerboseModuleNameForDev) => Exports;
 type VerboseModuleNameForDev = string;
 
@@ -61,11 +62,7 @@ if (__DEV__) {
   } = Object.create(null);
 }
 
-function define(
-  factory: FactoryFn,
-  moduleId: number,
-  dependencyMap?: DependencyMap,
-) {
+function define(factory: FactoryFn, moduleId: number, dependencyMap?: DependencyMap) {
   if (moduleId in modules) {
     if (__DEV__) {
       // (We take `inverseDependencies` from `arguments` to avoid an unused
@@ -77,9 +74,7 @@ function define(
       if (inverseDependencies) {
         global.__accept(moduleId, factory, dependencyMap, inverseDependencies);
       } else {
-        console.warn(
-          `Trying to define twice module ID ${moduleId} in the same bundle`,
-        );
+        console.warn(`Trying to define twice module ID ${moduleId} in the same bundle`);
       }
     }
 
@@ -110,7 +105,7 @@ function define(
 }
 
 function require(moduleId: ModuleID | VerboseModuleNameForDev) {
-  if (__DEV__ && typeof moduleId === 'string') {
+  if (__DEV__ && typeof moduleId === "string") {
     const verboseName = moduleId;
     moduleId = verboseNamesToModuleIds[verboseName];
     if (moduleId == null) {
@@ -118,7 +113,7 @@ function require(moduleId: ModuleID | VerboseModuleNameForDev) {
     } else {
       console.warn(
         `Requiring module '${verboseName}' by name is only supported for ` +
-          'debugging purposes and will BREAK IN PRODUCTION!',
+          "debugging purposes and will BREAK IN PRODUCTION!"
       );
     }
   }
@@ -126,9 +121,7 @@ function require(moduleId: ModuleID | VerboseModuleNameForDev) {
   //$FlowFixMe: at this point we know that moduleId is a number
   const moduleIdReallyIsNumber: number = moduleId;
   const module = modules[moduleIdReallyIsNumber];
-  return module && module.isInitialized
-    ? module.exports
-    : guardedLoadModule(moduleIdReallyIsNumber, module);
+  return module && module.isInitialized ? module.exports : guardedLoadModule(moduleIdReallyIsNumber, module);
 }
 
 let inGuard = false;
@@ -151,16 +144,14 @@ function guardedLoadModule(moduleId: ModuleID, module) {
 const ID_MASK_SHIFT = 16;
 const LOCAL_ID_MASK = ~0 >>> ID_MASK_SHIFT;
 
-function unpackModuleId(
-  moduleId: ModuleID,
-): {segmentId: number, localId: number} {
+function unpackModuleId(moduleId: ModuleID): { segmentId: number, localId: number } {
   const segmentId = moduleId >>> ID_MASK_SHIFT;
   const localId = moduleId & LOCAL_ID_MASK;
-  return {segmentId, localId};
+  return { segmentId, localId };
 }
 require.unpackModuleId = unpackModuleId;
 
-function packModuleId(value: {segmentId: number, localId: number}): ModuleID {
+function packModuleId(value: { segmentId: number, localId: number }): ModuleID {
   return value.segmentId << (ID_MASK_SHIFT + value.localId);
 }
 require.packModuleId = packModuleId;
@@ -168,7 +159,7 @@ require.packModuleId = packModuleId;
 function loadModuleImplementation(moduleId, module) {
   const nativeRequire = global.nativeRequire;
   if (!module && nativeRequire) {
-    const {segmentId, localId} = unpackModuleId(moduleId);
+    const { segmentId, localId } = unpackModuleId(moduleId);
     nativeRequire(localId, segmentId);
     module = modules[moduleId];
   }
@@ -187,7 +178,7 @@ function loadModuleImplementation(moduleId, module) {
   // it can be used here.
   // TODO(davidaurelio) Scan polyfills for dependencies, too (t9759686)
   if (__DEV__) {
-    var {Systrace} = require;
+    var { Systrace } = require;
   }
 
   // We must optimistically mark module as initialized before running the
@@ -195,14 +186,14 @@ function loadModuleImplementation(moduleId, module) {
   // infinite require loop.
   module.isInitialized = true;
   const exports = (module.exports = {});
-  const {factory, dependencyMap} = module;
+  const { factory, dependencyMap } = module;
   try {
     if (__DEV__) {
       // $FlowFixMe: we know that __DEV__ is const and `Systrace` exists
-      Systrace.beginEvent('JS_require_' + (module.verboseName || moduleId));
+      Systrace.beginEvent("JS_require_" + (module.verboseName || moduleId));
     }
 
-    const moduleObject: Module = {exports};
+    const moduleObject: Module = { exports };
     if (__DEV__ && module.hot) {
       moduleObject.hot = module.hot;
     }
@@ -237,24 +228,19 @@ function unknownModuleError(id) {
   let message = 'Requiring unknown module "' + id + '".';
   if (__DEV__) {
     message +=
-      'If you are sure the module is there, try restarting Metro Bundler. ' +
-      'You may also want to run `yarn`, or `npm install` (depending on your environment).';
+      "If you are sure the module is there, try restarting Metro Bundler. " +
+      "You may also want to run `yarn`, or `npm install` (depending on your environment).";
   }
   return Error(message);
 }
 
 function moduleThrewError(id, error: any) {
   const displayName = (__DEV__ && modules[id] && modules[id].verboseName) || id;
-  return Error(
-    'Requiring module "' +
-      displayName +
-      '", which threw an exception: ' +
-      error,
-  );
+  return Error('Requiring module "' + displayName + '", which threw an exception: ' + error);
 }
 
 if (__DEV__) {
-  require.Systrace = {beginEvent: () => {}, endEvent: () => {}};
+  require.Systrace = { beginEvent: () => {}, endEvent: () => {} };
 
   require.getModules = () => {
     return modules;
@@ -267,23 +253,21 @@ if (__DEV__) {
       accept: callback => {
         hot.acceptCallback = callback;
       },
+      disposeCallback: null,
+      dispose: callback => {
+        hot.disposeCallback = callback;
+      },
     };
     return hot;
   };
 
-  const acceptAll = function(dependentModules, inverseDependencies) {
+  const acceptAll = function(dependentModules, inverseDependencies, patchedModules) {
     if (!dependentModules || dependentModules.length === 0) {
       return true;
     }
 
     const notAccepted = dependentModules.filter(
-      module =>
-        !accept(
-          module,
-          /*factory*/ undefined,
-          /*dependencyMap*/ undefined,
-          inverseDependencies,
-        ),
+      module => !accept(module, /*factory*/ undefined, /*dependencyMap*/ undefined, inverseDependencies, patchedModules)
     );
 
     const parents = [];
@@ -296,15 +280,22 @@ if (__DEV__) {
       parents.push(...inverseDependencies[notAccepted[i]]);
     }
 
-    return acceptAll(parents, inverseDependencies);
+    return parents.length == 0;
   };
 
   const accept = function(
     id: ModuleID,
     factory?: FactoryFn,
     dependencyMap?: DependencyMap,
-    inverseDependencies: {[key: ModuleID]: Array<ModuleID>},
+    inverseDependencies: { [key: ModuleID]: Array<ModuleID> },
+    patchedModules: PatchedModules = {}
   ) {
+    if (id in patchedModules) {
+      // Do not patch the same module more that once during an update.
+      return true;
+    }
+    patchedModules[id] = true;
+
     const mod = modules[id];
 
     if (!mod && factory) {
@@ -312,13 +303,18 @@ if (__DEV__) {
       return true;
     }
 
-    const {hot} = mod;
+    const { hot } = mod;
     if (!hot) {
-      console.warn(
-        'Cannot accept module because Hot Module Replacement ' +
-          'API was not installed.',
-      );
+      console.warn("Cannot accept module because Hot Module Replacement " + "API was not installed.");
       return false;
+    }
+
+    if (hot.disposeCallback) {
+      try {
+        hot.disposeCallback();
+      } catch (error) {
+        console.error(`Error while calling dispose handler for module ${id}: `, error);
+      }
     }
 
     // replace and initialize factory
@@ -333,17 +329,21 @@ if (__DEV__) {
     require(id);
 
     if (hot.acceptCallback) {
-      hot.acceptCallback();
-      return true;
-    } else {
-      // need to have inverseDependencies to bubble up accept
-      if (!inverseDependencies) {
-        throw new Error('Undefined `inverseDependencies`');
+      try {
+        hot.acceptCallback();
+        return true;
+      } catch (error) {
+        console.error(`Error while calling accept handler for module ${id}: `, error);
       }
-
-      // accept parent modules recursively up until all siblings are accepted
-      return acceptAll(inverseDependencies[id], inverseDependencies);
     }
+
+    // need to have inverseDependencies to bubble up accept
+    if (!inverseDependencies) {
+      throw new Error("Undefined `inverseDependencies`");
+    }
+
+    // accept parent modules recursively up until all siblings are accepted
+    return acceptAll(inverseDependencies[id], inverseDependencies, patchedModules);
   };
 
   global.__accept = accept;
